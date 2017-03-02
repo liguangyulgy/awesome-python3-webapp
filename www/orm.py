@@ -1,7 +1,11 @@
+__author__='liguangyu'
+'''ORM初始版本，存在SQL注入问题，待后续研究API后处理'''
+
 import asyncio
 import logging;logging.basicConfig(level=logging.INFO)
 import aiomysql
 import asyncio
+import time
 
 async def create_pool(loop,**kw):
     logging.info('create database connection pool...')
@@ -20,7 +24,8 @@ async def create_pool(loop,**kw):
     )
 
 async def select(sql,args,size=None):
-    logging.info(sql,args)
+    logging.info(sql)
+    logging.info(args)
     global __pool
     with (await __pool) as conn:
         cur = await conn.cursor(aiomysql.DictCursor)
@@ -34,7 +39,8 @@ async def select(sql,args,size=None):
         return rs
 
 async def execute (sql, args):
-    logging.info(sql,args)
+    logging.info(sql)
+    logging.info(args)
     with (await __pool) as conn:
         try:
             cur = await conn.cursor()
@@ -73,12 +79,14 @@ class ModelMetaclass(type):
         tableName = attrs.get('__table__',None) or name
         logging.info('found model: %s(table:%s' % (name,tableName) )
         mappings = dict()
+        rsMappings = dict()
         fields = []
         primaryKey = []
         for k,v in attrs.items():
             if isinstance(v,Field):
                 logging.info('  found mapping: %s ==> %s' % (k,v))
                 mappings[k] =v
+                rsMappings[v.name or k] = k
                 if v.primary_key:
                     primaryKey.append(k)
                 else:
@@ -90,12 +98,13 @@ class ModelMetaclass(type):
             attrs.pop(k)
         escaped_fields = list(map(lambda  f:'`%s`' %f,fields))
         attrs['__mappings__'] = mappings
+        attrs['__rsMappings__'] = rsMappings
         attrs['__table__'] = tableName
         attrs['__primary_key__'] = primaryKey
         attrs['__fields__'] = fields
-        attrs['__select__'] = 'SELECT `%s`, %s from `%s' % ('`,`'.join(primaryKey),','.join(escaped_fields),tableName)
-        attrs['__insert__'] = 'INSERT INTO `%s` {%s, `%s`} values {%s)' % tableName, ','.join(escaped_fields), '`,`'.join()
-        attrs['__update__'] = 'UPDATE `%s` set %s WHERE `%s`' % (tableName, ','.join(map(lambda  f:'`%s`=?' % (mappings.get(f).name or f), fields)), '`=?,`'.join(primaryKey))
+        attrs['__select__'] = 'SELECT `%s` from `%s`' % ('`,`'.join((mappings.get(f).name or f for f in mappings)),tableName)
+        attrs['__insert__'] = 'INSERT INTO `%s` (%s) values (%s)' % (tableName, '%s','%s')
+        attrs['__update__'] = 'UPDATE `%s` set %s WHERE `%s`' % (tableName, '%s','%s')
         attrs['__delete__'] = 'DELETE FROM %s WHERE `%s`' % (tableName, '`=?,`'.join(primaryKey))
         return type.__new__(cls,name,bases,attrs)
 
@@ -103,6 +112,10 @@ class Model(dict , metaclass=ModelMetaclass):
 
     def __init__(self, **kwargs):
         super(Model,self).__init__(**kwargs)
+
+    @classmethod
+    def _formFromRs(cls, rs):
+        return Model( **{cls.__rsMappings__[x]:y for x,y in rs.items()})
 
     def __getattr__(self, item):
         try:
@@ -129,63 +142,89 @@ class Model(dict , metaclass=ModelMetaclass):
     @classmethod
     async def find(cls,pk):
         ' find object by primary key. '
-        rs = await select('%s where `%s`' % (cls.__select__, '`=?,`'.join(cls.__primary_key__)),pk,1)
+        sql = '%s where %s' % (cls.__select__, ','.join(map(lambda f:' `%s`=? '%f , (cls.__mappings__[x].name or x for x in cls.__primary_key__))))
+        rs = await select(sql,pk,1)
         if len(rs) == 0:
             return None
-        return cls(**rs[0])
+        return cls._formFromRs(rs[0])
 
     async def save(self):
-        args = list(map(self.getValueOrDefault, self.__fields__))
-        args.extend(map(self.getValueOrDefault,self.__primary_key__))
-        rows = await execute(self.__insert__,args)
+        keys = []
+        args = []
+        for k in self.__mappings__:
+            keys.append(self.__mappings__[k].name or k)
+            args.append(self.getValueOrDefault(k))
+        sql = self.__insert__ % (','.join(keys), ','.join(['?']*len(keys)))
+        print(sql)
+        rows = await execute(sql,args)
         if rows != 1:
             logging.warning('failed to insert record.')
 
     @classmethod
-    async def findAll(cls,cond):
-        conditions = [' 1=1 '].extend(['%s = %s ' % (cls.__mappings__[x].name or x, y) for x,y in cond.iterItems() if x in cls.__mappings__.keys()])
+    async def findAll(cls,cond = {}):
+        conditions = [' 1=1 ']
+        conditions.extend(['%s = %s ' % (cls.__mappings__[x].name or x, y) for x,y in cond.items() if x in cls.__mappings__.keys()])
         """这里有SQL注入问题，后期研究API后解决"""
-        rs = await select( cls.__select__ + ' WHERE  ' + ' AND '.join(conditions))
+        rs = await select( cls.__select__ + ' WHERE  ' + ' AND '.join(conditions),None)
         if len(rs) == 0:
             return None
-        return [cls(**x) for x in rs]
+        return [cls._formFromRs(x) for x in rs]
         pass
 
     @classmethod
-    async def findNumber(cls, cond):
-        conditions = [' 1=1 '].extend(['%s = %s ' % (cls.__mappings__[x].name or x, y) for x,y in cond.iterItems() if x in cls.__mappings__.keys()])
-        rs = await select('SELECT COUNT(*) FROM %s WHEER %s' % (cls.__table__ , ' AND '.join(conditions)))
+    async def findNumber(cls, cond = {}):
+        conditions = [' 1=1 ']
+        conditions.extend(['%s = %s ' % (cls.__mappings__[x].name or x, y) for x,y in cond.items() if x in cls.__mappings__.keys()])
+        rs = await select('SELECT COUNT(*) FROM %s WHERE %s' % (cls.__table__ , ' AND '.join(conditions)), None)
         return rs[0] if rs else 0
 
     async def remove(self):
-        conditions = [' 1 = 1 '].extend([' %s = %s ' % (x, self[x]) for x in self.__primary_key__])
-        rs = await execute('DELETE FROM %s WHERE %s' % (self.__table__, ' AND '.join(conditions)))
-        pass
+        conditions = [' 1 = 1 ']
+        conditions.extend([' %s = %s ' % (self.__mappings__[x].name or x, self[x]) for x in self.__class__.__primary_key__])
+        rs = await execute('DELETE FROM %s WHERE %s' % (self.__table__, ' AND '.join(conditions)), None)
+        return rs
 
     async def dbUpdate(self):
-        pass
+        conditions = [' 1 = 1 ']
+        conditions.extend([' %s = %s ' % (self.__mappings__[x].name or x, self[x]) for x in self.__class__.__primary_key__])
+        sql = self.__update__ % (','.join( ( '%s=%s'%(self.__mappings__[x].name or x,  self[x]) for x in self if x not in self.__primary_key__) ) ,  ' AND '.join(conditions))
+        rs = await execute(sql,None)
+        return rs
 
 
 class User(Model):
 
     __table__ = 'users'
 
-    id = IntegerField(primary_key=True)
-    name = StringField()
+    id = IntegerField(name='ID_',primary_key=True)
+    name = StringField(name='NAME_',default='defaultName')
 
 
 '''测试代码'''
-async def mainTest():
-    loop = asyncio.get_event_loop()
-    await create_pool(loop,{
+async def mainTest(loop):
+    await create_pool(loop,**{
         'host' : 'liguangyumysql.cf8iw2auduon.ap-southeast-1.rds.amazonaws.com',
         'port' :  3306,
         'user' : 'gyli',
         'password' : 'gyligyli',
-        'db' : 'db',
-        'loop' : loop
+        'db' : 'liguangyumysql'
     })
+
+    user = User(id=6)
+    try:
+        await user.save()
+    except Exception as e:
+        print(e)
+    us2 = await User.find(1)
+    print(us2)
+    print(await User.findAll({'id':4}))
+    print(await User.findNumber())
+    print(await user.remove())
+    us2.name = '23333'
+    print(await us2.dbUpdate())
 
 
 if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(mainTest(loop))
     pass
