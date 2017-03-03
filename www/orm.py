@@ -71,6 +71,21 @@ class IntegerField(Field):
     def __init__(self,name=None, primary_key=False, default=None, ddl='INT(16)'):
         super().__init__(name,ddl,primary_key,default)
 
+class BooleanField(Field):
+
+    def __init__(self,name=None, primary_key=False, default=False, ddl='Boolean'):
+        super().__init__(name,ddl,primary_key,default)
+
+class FloatField(Field):
+
+    def __init__(self,name=None, primary_key=False, default=False, ddl='Float'):
+        super().__init__(name,ddl,primary_key,default)
+
+class TextField(Field):
+
+    def __init__(self,name=None, primary_key=False, default='', ddl='Text'):
+        super().__init__(name,ddl,primary_key,default)
+
 class ModelMetaclass(type):
 
     def __new__(cls,name,bases,attrs):
@@ -104,7 +119,7 @@ class ModelMetaclass(type):
         attrs['__fields__'] = fields
         attrs['__select__'] = 'SELECT `%s` from `%s`' % ('`,`'.join((mappings.get(f).name or f for f in mappings)),tableName)
         attrs['__insert__'] = 'INSERT INTO `%s` (%s) values (%s)' % (tableName, '%s','%s')
-        attrs['__update__'] = 'UPDATE `%s` set %s WHERE `%s`' % (tableName, '%s','%s')
+        attrs['__update__'] = 'UPDATE `%s` set %s WHERE %s' % (tableName, '%s','%s')
         attrs['__delete__'] = 'DELETE FROM %s WHERE `%s`' % (tableName, '`=?,`'.join(primaryKey))
         return type.__new__(cls,name,bases,attrs)
 
@@ -115,7 +130,7 @@ class Model(dict , metaclass=ModelMetaclass):
 
     @classmethod
     def _formFromRs(cls, rs):
-        return Model( **{cls.__rsMappings__[x]:y for x,y in rs.items()})
+        return cls( **{cls.__rsMappings__[x]:y for x,y in rs.items()})
 
     def __getattr__(self, item):
         try:
@@ -180,13 +195,13 @@ class Model(dict , metaclass=ModelMetaclass):
 
     async def remove(self):
         conditions = [' 1 = 1 ']
-        conditions.extend([' %s = %s ' % (self.__mappings__[x].name or x, self[x]) for x in self.__class__.__primary_key__])
+        conditions.extend([' %s = %s ' % (self.__mappings__[x].name or x, self[x]) for x in self.__primary_key__])
         rs = await execute('DELETE FROM %s WHERE %s' % (self.__table__, ' AND '.join(conditions)), None)
         return rs
 
     async def dbUpdate(self):
         conditions = [' 1 = 1 ']
-        conditions.extend([' %s = %s ' % (self.__mappings__[x].name or x, self[x]) for x in self.__class__.__primary_key__])
+        conditions.extend([' %s = %s ' % (self.__mappings__[x].name or x, self[x]) for x in self.__primary_key__])
         sql = self.__update__ % (','.join( ( '%s=%s'%(self.__mappings__[x].name or x,  self[x]) for x in self if x not in self.__primary_key__) ) ,  ' AND '.join(conditions))
         rs = await execute(sql,None)
         return rs
@@ -207,7 +222,8 @@ async def mainTest(loop):
         'port' :  3306,
         'user' : 'gyli',
         'password' : 'gyligyli',
-        'db' : 'liguangyumysql'
+        'db' : 'awesome'
+        # 'db': 'liguangyumysql'
     })
 
     user = User(id=6)
