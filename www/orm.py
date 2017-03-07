@@ -7,6 +7,11 @@ import aiomysql
 import asyncio
 import time
 
+async def init(loop, **kwargs):
+    print('orm initing')
+    await create_pool(loop,**kwargs)
+
+
 async def create_pool(loop,**kw):
     logging.info('create database connection pool...')
     global __pool
@@ -26,7 +31,6 @@ async def create_pool(loop,**kw):
 async def select(sql,args,size=None):
     logging.info(sql)
     logging.info(args)
-    global __pool
     with (await __pool) as conn:
         cur = await conn.cursor(aiomysql.DictCursor)
         await cur.execute(sql.replace('?','%s'),args or {})
@@ -217,14 +221,8 @@ class User(Model):
 
 '''测试代码'''
 async def mainTest(loop):
-    await create_pool(loop,**{
-        'host' : 'liguangyumysql.cf8iw2auduon.ap-southeast-1.rds.amazonaws.com',
-        'port' :  3306,
-        'user' : 'gyli',
-        'password' : 'gyligyli',
-        'db' : 'awesome'
-        # 'db': 'liguangyumysql'
-    })
+    import www.config
+    await create_pool(loop,**www.config.config)
 
     user = User(id=6)
     try:
