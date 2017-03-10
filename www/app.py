@@ -12,9 +12,11 @@ def index(request):
     return web.Response(content_type=r'text\html',body=b'<h1>Awesome</h1>')
 
 def datetime_filter(t):
-    delta = init(time.time() - t)
+    delta = int(time.time() - t)
     if delta < 60:
         return u'1分钟前'
+    elif delta < 3600:
+        return u'1小时前 '
     dt = datetime.fromtimestamp(t)
     return u'%s年%s月%s日' % (dt.year, dt.month, dt.day)
 

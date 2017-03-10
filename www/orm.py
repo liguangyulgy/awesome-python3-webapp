@@ -159,7 +159,7 @@ class Model(dict , metaclass=ModelMetaclass):
         return value
 
     @classmethod
-    async def find(cls,pk):
+    async def find(cls,pk, start =0, step = 65535):
         ' find object by primary key. '
         sql = '%s where %s' % (cls.__select__, ','.join(map(lambda f:' `%s`=? '%f , (cls.__mappings__[x].name or x for x in cls.__primary_key__))))
         rs = await select(sql,pk,1)
