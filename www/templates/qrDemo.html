@@ -1,0 +1,19 @@
+{% extends '__base__.html' %}
+
+{% block title %}日志{% endblock %}
+
+{% block beforehead %}
+<script type="text/javascript" src="/static/js/jquery.qrcode.min.js"></script>
+
+<script>
+    $(document).ready(function(){
+        $('#code').qrcode("{{qrStr}}")
+    })
+</script>
+
+{% endblock %}
+{% block content %}
+
+<div id="code"></div>
+
+{% endblock %}

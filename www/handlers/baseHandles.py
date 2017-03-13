@@ -2,6 +2,8 @@ __author__ = 'LiGuangyu'
 from www.webFram import get,post
 import logging;logging.basicConfig(level=logging.INFO)
 import www.orm as orm
+from aiohttp import web
+
 from www.models import User,Blog,Comment
 import asyncio
 import time
@@ -25,6 +27,10 @@ def index(request):
     }
 
 @get('/api/users')
-async def api_get_users(*, page='1', pageSize = '20'):
+async def api_get_users(*, page=1, pageSize = 20):
     num = await User.findNumber()
-    users = await User.findAll()
+    pageSize = int(pageSize)
+    start = pageSize * (int(page) - 1)
+    users = await User.findAll(start=start, step=pageSize, orderby=' created_at ')
+    return {'users':users}
+

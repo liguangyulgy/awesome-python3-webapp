@@ -159,7 +159,7 @@ class Model(dict , metaclass=ModelMetaclass):
         return value
 
     @classmethod
-    async def find(cls,pk, start =0, step = 65535):
+    async def find(cls,pk):
         ' find object by primary key. '
         sql = '%s where %s' % (cls.__select__, ','.join(map(lambda f:' `%s`=? '%f , (cls.__mappings__[x].name or x for x in cls.__primary_key__))))
         rs = await select(sql,pk,1)
@@ -180,11 +180,12 @@ class Model(dict , metaclass=ModelMetaclass):
             logging.warning('failed to insert record.')
 
     @classmethod
-    async def findAll(cls,cond = {}):
+    async def findAll(cls,cond = {}, start =0, step = 65535, orderby =''):
         conditions = [' 1=1 ']
         conditions.extend(['%s = %s ' % (cls.__mappings__[x].name or x, y) for x,y in cond.items() if x in cls.__mappings__.keys()])
         """这里有SQL注入问题，后期研究API后解决"""
-        rs = await select( cls.__select__ + ' WHERE  ' + ' AND '.join(conditions),None)
+        append = ' %s LIMIT %d, %d ' %('ORDER BY ' + orderby if orderby else '' , start, step)
+        rs = await select( cls.__select__ + ' WHERE  ' + ' AND '.join(conditions) + append,None)
         if len(rs) == 0:
             return None
         return [cls._formFromRs(x) for x in rs]

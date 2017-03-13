@@ -37,7 +37,7 @@ class RequestHandler(object):
         self._func = fn
 
     async def __call__(self, request):
-        args = inspect.signature(self._func).parameters
+        sigArgs = inspect.signature(self._func).parameters
         kw ={}
         qs = request.query_string
         if qs:
@@ -54,9 +54,15 @@ class RequestHandler(object):
         kw.update(dict(**body))
         kw.update({'body':body,'request':request})
         try:
-            args = {x:kw[x] for x in args }
+            args = {x:kw[x] for x in sigArgs if x in kw}
         except ValueError as e :
             return web.HTTPBadRequest(e)
+        for x in sigArgs:
+            if x not in args and '=' not in str(sigArgs[x]):
+                message = 'Missing args %s' % x
+                resp = web.HTTPBadRequest(body= message.encode('utf-8'))
+                resp.content_type = 'text/html;charset=utf-8'
+                return resp
         r = await self._func(**args)
         return r
 
