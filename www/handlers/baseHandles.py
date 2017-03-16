@@ -5,8 +5,45 @@ import www.orm as orm
 from aiohttp import web
 
 from www.models import User,Blog,Comment
-import asyncio
+import asyncio,hashlib,json
 import time
+
+COOKIE_NAME = "liguangyuCookie"
+_COOKIE_KEY = "testyet"
+
+def user2cookie(user,max_age):
+    expires = str(int(time.time()) + max_age)
+    s = '%s-%s-%s-%s' % (user.id, user.passwd, expires, _COOKIE_KEY)
+    L = [user.id ,expires, hashlib.sha1(s.encode('utf-8')).hexdigest()]
+    return '-'.join(L)
+
+async def cookie2user(cookie_str):
+    if not cookie_str:
+        return None
+    try:
+        L = cookie_str.split('-')
+        if len(L) != 3:
+            return None
+        uid, expires,sha1 = L
+        if int(expires) < time.time():
+            return None
+        user = await User.find(uid)
+        if user is None:
+            return None
+        s = '%s-%s-%s-%s' % (uid, user.passwd, expires, _COOKIE_KEY)
+        if sha1 != hashlib.sha1(s.encode('utf-8').hexdigest()):
+            logging.info('invalid sha1')
+            return None
+        user.passwd = '******'
+        return user
+    except Exception as e:
+        logging.exception(e)
+        return None
+
+
+
+
+
 
 @get('/hello/world/{name}')
 async def test(name):
@@ -34,3 +71,18 @@ async def api_get_users(*, page=1, pageSize = 20):
     users = await User.findAll(start=start, step=pageSize, orderby=' created_at ')
     return {'users':users}
 
+'''user register'''
+@post('/api/users/register')
+async def api_reqister_user(*,email,name,passwd):
+    users = await User.findAll(cond={'email':email},step=1)
+    if len(users) > 0:
+        return ' User exists'
+
+    user = User(name=name.strip(), email=email, passwd=passwd)
+    await user.save()
+    r = web.Response()
+    r.set_cookie(COOKIE_NAME, user2cookie(user,86400),max_age=86400,httponly=True)
+    user.passwd = '******'
+    r.content_type = 'application/json'
+    r.body = json.dumps(user,ensure_ascii=False).encode('utf-8')
+    return r
