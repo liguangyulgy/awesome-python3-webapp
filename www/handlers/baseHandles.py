@@ -75,7 +75,7 @@ async def api_get_users(*, page=1, pageSize = 20):
 @post('/api/users/register')
 async def api_reqister_user(*,email,name,passwd):
     users = await User.findAll(cond={'email':email},step=1)
-    if len(users) > 0:
+    if users:
         return ' User exists'
 
     user = User(name=name.strip(), email=email, passwd=passwd)
@@ -86,3 +86,10 @@ async def api_reqister_user(*,email,name,passwd):
     r.content_type = 'application/json'
     r.body = json.dumps(user,ensure_ascii=False).encode('utf-8')
     return r
+
+@get('/userRegister.html')
+async def userRegisterPage(request):
+    rev = {
+        '__template__':'userRegister.html'
+    }
+    return rev

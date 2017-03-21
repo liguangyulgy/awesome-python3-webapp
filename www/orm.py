@@ -182,7 +182,7 @@ class Model(dict , metaclass=ModelMetaclass):
     @classmethod
     async def findAll(cls,cond = {}, start =0, step = 65535, orderby =''):
         conditions = [' 1=1 ']
-        conditions.extend(['%s = %s ' % (cls.__mappings__[x].name or x, y) for x,y in cond.items() if x in cls.__mappings__.keys()])
+        conditions.extend(["%s = '%s' " % (cls.__mappings__[x].name or x, y) for x,y in cond.items() if x in cls.__mappings__.keys()])
         """这里有SQL注入问题，后期研究API后解决"""
         append = ' %s LIMIT %d, %d ' %('ORDER BY ' + orderby if orderby else '' , start, step)
         rs = await select( cls.__select__ + ' WHERE  ' + ' AND '.join(conditions) + append,None)
