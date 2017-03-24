@@ -7,6 +7,7 @@ import www.webFram as webFram
 import logging;logging.basicConfig(level=logging.INFO)
 from jinja2 import Environment,FileSystemLoader
 from www.config import config
+from www.handlers.baseHandles import cookie_check
 
 def index(request):
     return web.Response(content_type=r'text\html',body=b'<h1>Awesome</h1>')
@@ -43,7 +44,7 @@ def init_jinja2(app,**kw):
     app['__templating__'] = env
 
 async def init(loop):
-    app = web.Application(loop=loop, middlewares=[webFram.logger_factory,webFram.response_factory])
+    app = web.Application(loop=loop, middlewares=[cookie_check,webFram.logger_factory,webFram.response_factory])
     init_jinja2(app,filters = dict(datetime=datetime_filter))
     await www.orm.init(loop,**config['db'])
     webFram.add_routes(app,'www.handlers')

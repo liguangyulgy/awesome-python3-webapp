@@ -93,3 +93,74 @@ async def userRegisterPage(request):
         '__template__':'userRegister.html'
     }
     return rev
+
+@post('/api/login')
+async  def login(*,email,passwd):
+    users = await User.findAll({'email':email},step=1)
+    if len(users) == 0:
+        raise Exception('Email not exist')
+    user = users[0]
+
+    sha1 = hashlib.sha1()
+    sha1.update(user.id.encode('utf-8'))
+    sha1.update(b':')
+    sha1.update(passwd.encode('utf-8'))
+    if user.passwd != sha1.hexdigst():
+        raise Exception('Invalide passwd')
+    r = web.Response()
+    r.set_cookie(COOKIE_NAME,user2cookie(user,86400), max_age=86400,httponly=True)
+    user.passwd = '******'
+    r.content_type = 'application/json'
+    r.body = json.dumps(user,ensure_ascii=False).encode('utf-8')
+    return r
+
+
+async def cookie_check(app, handler):
+    async def check(request):
+        request.__user__ = None
+        cookie = request.cookies.get(COOKIE_NAME)
+        if cookie:
+            user = await cookie2user(cookie_str=cookie)
+            if user:
+                request.__user__ = user
+        return await(handler(request))
+    return check
+
+
+@get('/createBlog.html')
+def createBlogPage(request, id=None):
+    '''demo create only'''
+    rev={
+        '__template__':'createBlog.html',
+        'action':'/api/blogs/0'
+    }
+    if id:
+        rev['id'] = id
+    return rev
+
+@post('/api/blogs/{id}')
+async def createBlog(request, *, name, summary, content,id):
+    #check_admin(request)
+    if 0 == id:
+        blog = Blog(user_id=request.__user__.id, user_name=request.__user__.name, user_image=request.__user__.image, name = name.strip(),
+                    summary=summary.strip(), content=content.strip())
+        await blog.save()
+    else :
+        blog = await Blog.find(id)
+        if blog:
+            blog.update({
+                'name':name,
+                'summary':summary,
+                'content':content
+            });
+            await blog.save();
+        else :
+            return Exception('No blog found')
+    return blog
+
+
+
+@get('/api/blogs/{id}')
+async def showBlogs(request,id):
+    return None
+
